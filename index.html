@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>海上浮式平台态势与安全联锁原型</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">FLOATING PLATFORM DIGITAL TWIN</p>
+      <h1>海上浮式平台态势与压载联锁</h1>
+    </div>
+    <div class="top-actions">
+      <span id="systemStatus" class="status-pill status-normal">系统正常</span>
+      <span id="simClock" class="clock">T+00:00</span>
+      <button id="simToggle" class="btn btn-secondary" type="button">暂停演算</button>
+      <button id="resetScene" class="btn btn-ghost" type="button">重置场景</button>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <section class="card card-wide span-12">
+      <div class="card-header">
+        <div>
+          <h2>平台总览</h2>
+          <p>俯视态势随浪流方向、吊臂回转和压载修正连续更新</p>
+        </div>
+        <div class="hazard-summary" id="hazardSummary">无高风险步骤</div>
+      </div>
+      <div class="overview-grid">
+        <canvas id="platformCanvas" width="760" height="430" aria-label="平台俯视态势图"></canvas>
+        <div class="attitude-panel">
+          <div class="attitude-gauge">
+            <span>横摇 Roll</span>
+            <strong id="rollValue">0.00°</strong>
+            <div class="bar"><i id="rollBar"></i></div>
+          </div>
+          <div class="attitude-gauge">
+            <span>纵摇 Pitch</span>
+            <strong id="pitchValue">0.00°</strong>
+            <div class="bar"><i id="pitchBar"></i></div>
+          </div>
+          <div class="attitude-gauge">
+            <span>艏向 Yaw</span>
+            <strong id="yawValue">0.0°</strong>
+            <div class="bar"><i id="yawBar"></i></div>
+          </div>
+          <div class="attitude-gauge">
+            <span>升沉 Heave</span>
+            <strong id="heaveValue">0.0 m</strong>
+            <div class="bar"><i id="heaveBar"></i></div>
+          </div>
+          <div class="mini-stat">
+            <span>重心横向偏移</span><strong id="cgY">0.0 m·t</strong>
+          </div>
+          <div class="mini-stat">
+            <span>重心纵向偏移</span><strong id="cgX">0.0 m·t</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card span-4">
+      <div class="card-header"><h2>风浪流输入</h2><span class="live-dot"></span></div>
+      <div class="control-stack">
+        <label>风速 <strong id="windSpeedValue">12 m/s</strong>
+          <input id="windSpeed" type="range" min="0" max="30" step="1" value="12">
+        </label>
+        <label>有义波高 <strong id="waveHeightValue">2.4 m</strong>
+          <input id="waveHeight" type="range" min="0" max="6" step="0.1" value="2.4">
+        </label>
+        <label>浪向 <strong id="waveDirValue">135°</strong>
+          <input id="waveDir" type="range" min="0" max="359" step="1" value="135">
+        </label>
+        <label>流速 <strong id="currentSpeedValue">0.8 m/s</strong>
+          <input id="currentSpeed" type="range" min="0" max="2" step="0.1" value="0.8">
+        </label>
+        <div class="env-arrow">
+          <span>环境合力方向</span>
+          <strong id="forceDir">135°</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="card span-4">
+      <div class="card-header"><h2>压载水转移</h2><span id="pumpHealth" class="tag tag-ok">流量正常</span></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>舱室</th><th>液位</th><th>水量</th><th>状态</th></tr></thead>
+          <tbody id="tankBody"></tbody>
+        </table>
+      </div>
+      <div class="control-grid">
+        <label>源舱
+          <select id="ballastFrom"></select>
+        </label>
+        <label>目标舱
+          <select id="ballastTo"></select>
+        </label>
+        <label>转移量 <strong id="transferAmountValue">12 m³</strong>
+          <input id="transferAmount" type="range" min="2" max="40" step="1" value="12">
+        </label>
+        <label>泵流量 <strong id="pumpRateValue">8 m³/min</strong>
+          <input id="pumpRate" type="range" min="2" max="18" step="0.5" value="8">
+        </label>
+      </div>
+      <button id="startTransfer" class="btn btn-primary" type="button">下达压载转移步骤</button>
+      <p class="hint">安全流量建议不超过 12 m³/min；系统会预测舱室液位、姿态和系泊响应。</p>
+    </section>
+
+    <section class="card span-4">
+      <div class="card-header"><h2>系泊张力</h2><span id="mooringStatus" class="tag tag-ok">正常</span></div>
+      <div id="mooringList" class="tension-list"></div>
+    </section>
+
+    <section class="card span-4">
+      <div class="card-header"><h2>甲板载荷</h2><span class="tag">固定载荷 44 t</span></div>
+      <div id="deckLoads" class="load-list"></div>
+    </section>
+
+    <section class="card span-4">
+      <div class="card-header"><h2>起重作业</h2><span id="craneStatus" class="tag tag-ok">待命</span></div>
+      <div class="control-grid">
+        <label>吊物重量 <strong id="hookLoadValue">8 t</strong>
+          <input id="hookLoad" type="range" min="0" max="24" step="0.5" value="8">
+        </label>
+        <label>目标吊臂方位 <strong id="targetAngleValue">270°</strong>
+          <input id="targetAngle" type="range" min="0" max="359" step="1" value="270">
+        </label>
+      </div>
+      <div class="button-row">
+        <button id="startLift" class="btn btn-primary" type="button">开始吊装</button>
+        <button id="pauseLift" class="btn btn-secondary" type="button">暂停吊装</button>
+        <button id="resumeLift" class="btn btn-secondary" type="button">恢复吊装</button>
+        <button id="slewBoom" class="btn btn-secondary" type="button">改变吊臂方向</button>
+      </div>
+      <div class="crane-metrics">
+        <div><span>当前方位</span><strong id="boomAngle">315°</strong></div>
+        <div><span>吊钩高度</span><strong id="hookHeight">0.0 m</strong></div>
+        <div><span>最近禁区</span><strong id="hookZone">—</strong></div>
+      </div>
+    </section>
+
+    <section class="card span-4">
+      <div class="card-header"><h2>20 秒影响预测</h2><span id="predictionBadge" class="tag tag-ok">可接受</span></div>
+      <canvas id="predictionCanvas" width="420" height="150" aria-label="姿态预测曲线"></canvas>
+      <div class="table-wrap compact">
+        <table class="data-table">
+          <thead><tr><th>时间</th><th>横摇</th><th>纵摇</th><th>最大张力</th></tr></thead>
+          <tbody id="predictionBody"></tbody>
+        </table>
+      </div>
+      <ul id="predictionNotes" class="prediction-notes"></ul>
+    </section>
+
+    <section class="card span-4">
+      <div class="card-header"><h2>控制步骤队列</h2><span class="tag">活动 / 冻结 / 完成</span></div>
+      <div id="commandQueue" class="command-list"></div>
+    </section>
+
+    <section class="card span-4">
+      <div class="card-header"><h2>高风险冻结与恢复</h2><span id="freezeCount" class="tag tag-danger">0 项冻结</span></div>
+      <div id="freezePanel" class="freeze-panel">
+        <div class="empty-state">当前没有被冻结的高风险步骤。</div>
+      </div>
+    </section>
+
+    <section class="card span-4">
+      <div class="card-header">
+        <h2>可追溯事件链</h2>
+        <button id="exportAudit" class="btn btn-ghost small" type="button">导出 CSV</button>
+      </div>
+      <div id="auditLog" class="audit-log" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <template id="frozenTemplate">
+    <article class="frozen-item">
+      <div class="frozen-title">
+        <strong></strong>
+        <span class="tag tag-danger">已冻结</span>
+      </div>
+      <p class="reason"></p>
+      <dl class="snapshot"></dl>
+      <div class="check-result"></div>
+      <div class="button-row">
+        <button class="btn btn-primary reconcile" type="button">现场校验并恢复</button>
+        <button class="btn btn-ghost adopt-rate hidden" type="button">采用 10 m³/min</button>
+        <button class="btn btn-ghost abort" type="button">废弃步骤</button>
+      </div>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
